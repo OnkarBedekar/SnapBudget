@@ -1,0 +1,36 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+
+# Android
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/captures/
+
+# IDE / Editor
+.idea/
+*.iml
+*.ipr
+*.iws
+*.vscode/
+
+# macOS
+.DS_Store
+
+# Node.js
+node_modules/
+
+# Logs
+*.log
+firepit-log.txt
+
+# Optional / Misc
+*.lock
+*.bak

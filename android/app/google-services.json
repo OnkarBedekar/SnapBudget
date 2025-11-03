@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "314826677849",
+    "project_id": "snapbudget-23f37",
+    "storage_bucket": "snapbudget-23f37.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:314826677849:android:011f71504f073c403ddb48",
+        "android_client_info": {
+          "package_name": "com.example.snap_budget"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBC4KDtoxQw1_GpcyrSEF_BdocmWaLsvxw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
