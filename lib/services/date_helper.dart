@@ -15,6 +15,10 @@ class DateHelper {
     }
 
     // If no pay date left this month, get first pay date of next month
+    if (sortedPayDates.isEmpty) {
+      // If no pay dates, return a date far in the future
+      return DateTime(now.year + 1, 1, 1);
+    }
     final nextMonth = now.month == 12 ? 1 : now.month + 1;
     final nextYear = now.month == 12 ? now.year + 1 : now.year;
     return DateTime(nextYear, nextMonth, sortedPayDates.first);
@@ -50,12 +54,17 @@ class DateHelper {
     
     if (!found) {
       // Previous payday was last month
-      final lastMonth = now.month == 1 ? 12 : now.month - 1;
-      final lastMonthYear = now.month == 1 ? now.year - 1 : now.year;
-      previousPayday = DateTime(lastMonthYear, lastMonth, sortedPayDates.last);
+      if (sortedPayDates.isEmpty) {
+        // If no pay dates, use a date far in the past
+        previousPayday = DateTime(now.year - 1, 1, 1);
+      } else {
+        final lastMonth = now.month == 1 ? 12 : now.month - 1;
+        final lastMonthYear = now.month == 1 ? now.year - 1 : now.year;
+        previousPayday = DateTime(lastMonthYear, lastMonth, sortedPayDates.last);
+      }
     }
 
-    return DateRange(start: previousPayday!, end: nextPayday);
+    return DateRange(start: previousPayday ?? DateTime(now.year - 1, 1, 1), end: nextPayday);
   }
 
   // Format currency

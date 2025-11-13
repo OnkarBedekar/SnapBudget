@@ -41,6 +41,15 @@ class IncomeSource {
 
   // Create from Firebase Map
   factory IncomeSource.fromMap(Map<String, dynamic> map) {
+    DateTime createdAt;
+    try {
+      createdAt = map['createdAt'] != null 
+          ? DateTime.parse(map['createdAt']) 
+          : DateTime.now();
+    } catch (e) {
+      createdAt = DateTime.now();
+    }
+    
     return IncomeSource(
       id: map['id'] ?? '',
       userId: map['userId'] ?? '',
@@ -49,7 +58,7 @@ class IncomeSource {
       payDates: List<int>.from(map['payDates'] ?? []),
       hoursWorked: (map['hoursWorked'] ?? 0).toDouble(),
       targetHours: (map['targetHours'] ?? 80).toDouble(),
-      createdAt: DateTime.parse(map['createdAt']),
+      createdAt: createdAt,
     );
   }
 

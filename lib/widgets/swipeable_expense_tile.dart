@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/expense.dart';
 import '../services/date_helper.dart';
 import '../services/firebase_service.dart';
 import '../screens/home_screen.dart';
+import '../providers/dashboard_provider.dart';
+import '../utils/error_handler.dart';
+import '../utils/constants.dart';
 
 class SwipeableExpenseTile extends StatefulWidget {
   final Expense expense;
@@ -248,23 +252,29 @@ class _SwipeableExpenseTileState extends State<SwipeableExpenseTile> {
                   );
 
                   // Update the expense using the new update method
-                  await FirebaseService().updateExpense(updatedExpense);
+                  await FirebaseService().updateExpense(updatedExpense, oldExpense: widget.expense);
+
+                  // Refresh dashboard provider if available
+                  if (context.mounted) {
+                    try {
+                      final dashboardProvider = Provider.of<DashboardProvider>(context, listen: false);
+                      await dashboardProvider.refresh();
+                    } catch (e) {
+                      // Provider might not be available, that's okay
+                    }
+                  }
 
                   if (context.mounted) {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('✅ Expense updated successfully!'),
-                        backgroundColor: AppColors.income,
-                      ),
+                    ErrorHandler.showSuccessSnackBar(
+                      context,
+                      AppConstants.successExpenseUpdated,
                     );
                     widget.onExpenseUpdated?.call();
                   }
-                } catch (e) {
+                } catch (e, stackTrace) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error updating expense: $e')),
-                    );
+                    ErrorHandler.handleError(context, e, stackTrace: stackTrace);
                   }
                 }
               },
@@ -299,21 +309,28 @@ class _SwipeableExpenseTileState extends State<SwipeableExpenseTile> {
             onPressed: () async {
               try {
                 await FirebaseService().deleteExpense(widget.expense.id);
+                
+                // Refresh dashboard provider if available
+                if (context.mounted) {
+                  try {
+                    final dashboardProvider = Provider.of<DashboardProvider>(context, listen: false);
+                    await dashboardProvider.refresh();
+                  } catch (e) {
+                    // Provider might not be available, that's okay
+                  }
+                }
+
                 if (context.mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('✅ Expense deleted successfully!'),
-                      backgroundColor: AppColors.expense,
-                    ),
+                  ErrorHandler.showSuccessSnackBar(
+                    context,
+                    AppConstants.successExpenseDeleted,
                   );
                   widget.onExpenseUpdated?.call();
                 }
-              } catch (e) {
+              } catch (e, stackTrace) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error deleting expense: $e')),
-                  );
+                  ErrorHandler.handleError(context, e, stackTrace: stackTrace);
                 }
               }
             },

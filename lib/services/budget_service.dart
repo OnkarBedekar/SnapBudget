@@ -2,10 +2,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/monthly_budget.dart';
 import '../models/expense.dart';
+import '../utils/logger.dart';
+import '../utils/constants.dart';
+import 'cache_service.dart';
 
 class BudgetService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final CacheService _cache = CacheService();
 
   // Get current user ID
   String? get currentUserId => _auth.currentUser?.uid;
@@ -42,38 +46,57 @@ class BudgetService {
       );
 
       await _firestore
-          .collection('users')
+          .collection(AppConstants.usersCollection)
           .doc(userId)
-          .collection('monthly_budgets')
+          .collection(AppConstants.monthlyBudgetsCollection)
           .doc(budgetId)
           .set(monthlyBudget.toMap());
-          
-    } catch (e) {
-      print('Error setting monthly budget: $e');
+      
+      // Clear cache for this budget
+      _cache.remove('budget_$budgetId');
+      _cache.clearPattern('budget_${userId}_');
+      
+      AppLogger.i('Monthly budget saved: $budgetId');
+    } catch (e, stackTrace) {
+      AppLogger.e('Error setting monthly budget', e, stackTrace);
       rethrow;
     }
   }
 
-  /// Get monthly budget for a specific month
-  Future<MonthlyBudget?> getMonthlyBudget(int year, int month) async {
+  /// Get monthly budget for a specific month (with caching)
+  Future<MonthlyBudget?> getMonthlyBudget(int year, int month, {bool useCache = true}) async {
     try {
       final userId = currentUserId;
       if (userId == null) return null;
 
       final budgetId = '${year}_${month.toString().padLeft(2, '0')}';
+      final cacheKey = 'budget_${userId}_$budgetId';
+
+      // Try cache first
+      if (useCache) {
+        final cached = _cache.get<MonthlyBudget>(cacheKey);
+        if (cached != null) {
+          return cached;
+        }
+      }
+
+      // Fetch from Firestore (try cache first, then server)
       final doc = await _firestore
-          .collection('users')
+          .collection(AppConstants.usersCollection)
           .doc(userId)
-          .collection('monthly_budgets')
+          .collection(AppConstants.monthlyBudgetsCollection)
           .doc(budgetId)
-          .get();
+          .get(const GetOptions(source: Source.serverAndCache));
 
       if (doc.exists) {
-        return MonthlyBudget.fromMap(doc.data()!);
+        final budget = MonthlyBudget.fromMap(doc.data()!);
+        // Cache the result
+        _cache.set(cacheKey, budget, ttl: const Duration(minutes: 10));
+        return budget;
       }
       return null;
-    } catch (e) {
-      print('Error getting monthly budget: $e');
+    } catch (e, stackTrace) {
+      AppLogger.e('Error getting monthly budget', e, stackTrace);
       return null;
     }
   }
@@ -88,20 +111,27 @@ class BudgetService {
   Stream<List<MonthlyBudget>> getMonthlyBudgets() {
     final userId = currentUserId;
     if (userId == null) {
-      return Stream.value([]);
+      return Stream.value(<MonthlyBudget>[]);
     }
 
     return _firestore
-        .collection('users')
+        .collection(AppConstants.usersCollection)
         .doc(userId)
-        .collection('monthly_budgets')
+        .collection(AppConstants.monthlyBudgetsCollection)
         .orderBy('year')
         .orderBy('month')
         .snapshots()
-        .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => MonthlyBudget.fromMap(doc.data()))
-          .toList();
+        .map<List<MonthlyBudget>>((snapshot) {
+      try {
+        return snapshot.docs
+            .map((doc) => MonthlyBudget.fromMap(doc.data()))
+            .toList();
+      } catch (e, stackTrace) {
+        AppLogger.e('Error parsing monthly budgets', e, stackTrace);
+        return <MonthlyBudget>[];
+      }
+    }).handleError((error) {
+      AppLogger.e('Error in monthly budgets stream', error);
     });
   }
 
@@ -118,9 +148,9 @@ class BudgetService {
 
       final budgetId = '${year}_${month.toString().padLeft(2, '0')}';
       final budgetDoc = _firestore
-          .collection('users')
+          .collection(AppConstants.usersCollection)
           .doc(userId)
-          .collection('monthly_budgets')
+          .collection(AppConstants.monthlyBudgetsCollection)
           .doc(budgetId);
 
       // Use transaction to ensure data consistency
@@ -145,8 +175,160 @@ class BudgetService {
           });
         }
       });
-    } catch (e) {
-      print('Error updating budget spending: $e');
+      
+      // Clear cache for this budget
+      _cache.remove('budget_${userId}_$budgetId');
+      
+      AppLogger.d('Budget spending updated: $budgetId, amount: +$amount');
+    } catch (e, stackTrace) {
+      AppLogger.e('Error updating budget spending', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Subtract budget spending when expenses are deleted
+  Future<void> subtractBudgetSpending({
+    required int year,
+    required int month,
+    required double amount,
+    required String category,
+  }) async {
+    try {
+      final userId = currentUserId;
+      if (userId == null) return;
+
+      final budgetId = '${year}_${month.toString().padLeft(2, '0')}';
+      final budgetDoc = _firestore
+          .collection(AppConstants.usersCollection)
+          .doc(userId)
+          .collection(AppConstants.monthlyBudgetsCollection)
+          .doc(budgetId);
+
+      // Use transaction to ensure data consistency
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(budgetDoc);
+        
+        if (snapshot.exists) {
+          final data = snapshot.data()!;
+          final currentSpent = (data['actualSpent'] ?? 0).toDouble();
+          final categorySpent = Map<String, double>.from(data['categorySpent'] ?? {});
+          
+          // Subtract from totals
+          final newActualSpent = (currentSpent - amount).clamp(0.0, double.infinity);
+          final newCategorySpent = Map<String, double>.from(categorySpent);
+          final currentCategorySpent = (newCategorySpent[category] ?? 0) - amount;
+          newCategorySpent[category] = currentCategorySpent.clamp(0.0, double.infinity);
+          
+          transaction.update(budgetDoc, {
+            'actualSpent': newActualSpent,
+            'categorySpent': newCategorySpent,
+            'remainingBudget': data['totalBudget'] - newActualSpent,
+            'updatedAt': DateTime.now().toIso8601String(),
+          });
+        }
+      });
+      
+      // Clear cache for this budget
+      _cache.remove('budget_${userId}_$budgetId');
+      
+      AppLogger.d('Budget spending subtracted: $budgetId, amount: -$amount');
+    } catch (e, stackTrace) {
+      AppLogger.e('Error subtracting budget spending', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Update budget spending when expense is modified (handles old vs new values)
+  Future<void> updateBudgetSpendingOnEdit({
+    required int oldYear,
+    required int oldMonth,
+    required double oldAmount,
+    required String oldCategory,
+    required int newYear,
+    required int newMonth,
+    required double newAmount,
+    required String newCategory,
+  }) async {
+    try {
+      final userId = currentUserId;
+      if (userId == null) return;
+
+      // If month/year changed, subtract from old month and add to new month
+      if (oldYear != newYear || oldMonth != newMonth) {
+        // Subtract from old month
+        await subtractBudgetSpending(
+          year: oldYear,
+          month: oldMonth,
+          amount: oldAmount,
+          category: oldCategory,
+        );
+        // Add to new month
+        await updateBudgetSpending(
+          year: newYear,
+          month: newMonth,
+          amount: newAmount,
+          category: newCategory,
+        );
+      } else {
+        // Same month, just update the difference
+        final budgetId = '${newYear}_${newMonth.toString().padLeft(2, '0')}';
+        final budgetDoc = _firestore
+            .collection(AppConstants.usersCollection)
+            .doc(userId)
+            .collection(AppConstants.monthlyBudgetsCollection)
+            .doc(budgetId);
+
+        await _firestore.runTransaction((transaction) async {
+          final snapshot = await transaction.get(budgetDoc);
+          
+          if (snapshot.exists) {
+            final data = snapshot.data()!;
+            final currentSpent = (data['actualSpent'] ?? 0).toDouble();
+            final categorySpent = Map<String, double>.from(data['categorySpent'] ?? {});
+            
+            // Calculate difference
+            final amountDiff = newAmount - oldAmount;
+            final newActualSpent = (currentSpent + amountDiff).clamp(0.0, double.infinity);
+            
+            // Update category spending
+            final newCategorySpent = Map<String, double>.from(categorySpent);
+            
+            // Subtract from old category
+            if (oldCategory != newCategory) {
+              final oldCategorySpent = (newCategorySpent[oldCategory] ?? 0) - oldAmount;
+              newCategorySpent[oldCategory] = oldCategorySpent.clamp(0.0, double.infinity);
+            }
+            
+            // Add to new category
+            final currentNewCategorySpent = (newCategorySpent[newCategory] ?? 0);
+            if (oldCategory == newCategory) {
+              // Same category, just update the difference
+              newCategorySpent[newCategory] = (currentNewCategorySpent + amountDiff).clamp(0.0, double.infinity);
+            } else {
+              // Different category, add new amount
+              newCategorySpent[newCategory] = (currentNewCategorySpent + newAmount).clamp(0.0, double.infinity);
+            }
+            
+            transaction.update(budgetDoc, {
+              'actualSpent': newActualSpent,
+              'categorySpent': newCategorySpent,
+              'remainingBudget': data['totalBudget'] - newActualSpent,
+              'updatedAt': DateTime.now().toIso8601String(),
+            });
+          }
+        });
+        
+        // Clear cache for affected budgets
+        _cache.remove('budget_${userId}_$budgetId');
+        if (oldYear != newYear || oldMonth != newMonth) {
+          final oldBudgetId = '${oldYear}_${oldMonth.toString().padLeft(2, '0')}';
+          _cache.remove('budget_${userId}_$oldBudgetId');
+        }
+        
+        AppLogger.d('Budget spending updated on edit: $budgetId');
+      }
+    } catch (e, stackTrace) {
+      AppLogger.e('Error updating budget spending on edit', e, stackTrace);
       rethrow;
     }
   }

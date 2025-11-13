@@ -57,6 +57,20 @@ class MonthlyBalance {
   }
 
   factory MonthlyBalance.fromMap(Map<String, dynamic> map) {
+    DateTime createdAt, updatedAt;
+    try {
+      createdAt = map['createdAt'] != null 
+          ? DateTime.parse(map['createdAt']) 
+          : DateTime.now();
+      updatedAt = map['updatedAt'] != null 
+          ? DateTime.parse(map['updatedAt']) 
+          : DateTime.now();
+    } catch (e) {
+      final now = DateTime.now();
+      createdAt = now;
+      updatedAt = now;
+    }
+    
     return MonthlyBalance(
       id: map['id'] ?? '',
       userId: map['userId'] ?? '',
@@ -68,8 +82,8 @@ class MonthlyBalance {
       carryoverFromPrevious: (map['carryoverFromPrevious'] ?? 0).toDouble(),
       totalSavings: (map['totalSavings'] ?? 0).toDouble(),
       actualHoursWorked: (map['actualHoursWorked'] ?? 0).toDouble(),
-      createdAt: DateTime.parse(map['createdAt']),
-      updatedAt: DateTime.parse(map['updatedAt']),
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 

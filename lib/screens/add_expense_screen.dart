@@ -8,6 +8,11 @@ import '../services/date_helper.dart';
 import 'home_screen.dart';
 import '../services/notification_service.dart';
 import '../services/ocr_service.dart';
+import '../utils/error_handler.dart';
+import '../utils/validators.dart';
+import '../utils/constants.dart';
+import 'package:provider/provider.dart';
+import '../providers/dashboard_provider.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   const AddExpenseScreen({super.key});
@@ -20,24 +25,17 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final FirebaseService _firebaseService = FirebaseService();
   final ImagePicker _picker = ImagePicker();
   final OcrService _ocrService = OcrService();
+  final _formKey = GlobalKey<FormState>();
 
   File? _imageFile;
   final _amountController = TextEditingController();
   final _descriptionController = TextEditingController();
-  String _selectedCategory = 'Food';
+  String _selectedCategory = AppConstants.defaultCategory;
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = false;
   bool _isProcessing = false;
 
-  final List<String> _categories = [
-    'Food',
-    'Transport',
-    'Shopping',
-    'Entertainment',
-    'Bills',
-    'Healthcare',
-    'Other',
-  ];
+  final List<String> _categories = AppConstants.expenseCategories;
 
   @override
   void dispose() {
@@ -64,11 +62,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
         await _processReceiptImage(photo.path);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error taking picture: $e')),
-        );
+        ErrorHandler.handleError(context, e, stackTrace: stackTrace);
       }
     }
   }
@@ -90,11 +86,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
         await _processReceiptImage(image.path);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking image: $e')),
-        );
+        ErrorHandler.handleError(context, e, stackTrace: stackTrace);
       }
     }
   }
@@ -141,24 +135,19 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
           );
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       setState(() {
         _isProcessing = false;
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error processing receipt: $e')),
-        );
+        ErrorHandler.handleError(context, e, stackTrace: stackTrace);
       }
     }
   }
 
   Future<void> _saveExpense() async {
-    if (_amountController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter an amount')),
-      );
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
@@ -185,62 +174,49 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       // Update expense limit goals automatically
       await _firebaseService.updateExpenseLimitGoals(expense);
 
-      if (expense.amount > 100) {
+      if (expense.amount > AppConstants.largeExpenseThreshold) {
         NotificationService().showLargeExpenseAlert(expense.amount);
+      }
+
+      // Refresh dashboard provider if available
+      try {
+        final dashboardProvider = Provider.of<DashboardProvider>(context, listen: false);
+        await dashboardProvider.refresh();
+      } catch (e) {
+        // Provider might not be available in this context, that's okay
       }
 
       // Haptic feedback for success
       if (await Vibration.hasVibrator()) {
-        Vibration.vibrate(duration: 100);
+        Vibration.vibrate(duration: AppConstants.vibrationDuration);
       }
 
       setState(() {
         _imageFile = null;
         _amountController.clear();
         _descriptionController.clear();
-        _selectedCategory = 'Food';
+        _selectedCategory = AppConstants.defaultCategory;
         _selectedDate = DateTime.now();
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white),
-              const SizedBox(width: 8),
-              const Text('✅ Expense added successfully!'),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error, color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(child: Text('Error saving expense: $e')),
-            ],
-          ),
-          backgroundColor: AppColors.expense,
-          duration: const Duration(seconds: 4),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      if (mounted) {
+        ErrorHandler.showSuccessSnackBar(
+          context,
+          AppConstants.successExpenseAdded,
+        );
+        // Navigate back after successful save
+        Navigator.of(context).pop();
+      }
+    } catch (e, stackTrace) {
+      if (mounted) {
+        ErrorHandler.handleError(context, e, stackTrace: stackTrace);
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -274,11 +250,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               child: CircularProgressIndicator(color: AppColors.expense),
             )
           : SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+              child: Form(
+                key: _formKey,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                     _buildCameraSection(),
 
                     if (_isProcessing)
@@ -338,7 +316,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         ),
                       ),
                     ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -476,9 +455,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          TextField(
+          TextFormField(
             controller: _amountController,
             keyboardType: TextInputType.numberWithOptions(decimal: true),
+            validator: Validators.amount,
             style: const TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.bold,
@@ -493,6 +473,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               ),
               hintText: '0.00',
               border: InputBorder.none,
+              errorMaxLines: 2,
             ),
           ),
         ],

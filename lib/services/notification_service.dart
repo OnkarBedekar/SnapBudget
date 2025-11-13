@@ -1,11 +1,12 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../utils/logger.dart';
 
 // Background message handler
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('📬 Background message received: ${message.messageId}');
-  print('📬 Title: ${message.notification?.title}');
-  print('📬 Body: ${message.notification?.body}');
+  AppLogger.i('Background message received: ${message.messageId}');
+  AppLogger.d('Title: ${message.notification?.title}');
+  AppLogger.d('Body: ${message.notification?.body}');
 }
 
 class NotificationService {
@@ -30,14 +31,14 @@ class NotificationService {
         criticalAlert: false,
       );
 
-      print('📱 Notification permission status: ${settings.authorizationStatus}');
+      AppLogger.i('Notification permission status: ${settings.authorizationStatus}');
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-        print('✅ Notification permission granted');
+        AppLogger.i('Notification permission granted');
         
         // Get FCM token
         String? token = await _fcm.getToken();
-        print('📱 FCM Token: $token');
+        AppLogger.d('FCM Token: $token');
         
         // Initialize local notifications
         const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -54,7 +55,7 @@ class NotificationService {
         await _localNotifications.initialize(
           initSettings,
           onDidReceiveNotificationResponse: (details) {
-            print('Notification tapped: ${details.payload}');
+            AppLogger.i('Notification tapped: ${details.payload}');
           },
         );
 
@@ -79,21 +80,21 @@ class NotificationService {
         // Handle background messages
         FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
         
-        print('🎉 Notification service initialized successfully');
+        AppLogger.i('Notification service initialized successfully');
       } else if (settings.authorizationStatus == AuthorizationStatus.denied) {
-        print('❌ Notification permission denied');
+        AppLogger.w('Notification permission denied');
       } else if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
-        print('⚠️ Notification permission not determined');
+        AppLogger.w('Notification permission not determined');
       } else {
-        print('❓ Notification permission status: ${settings.authorizationStatus}');
+        AppLogger.w('Notification permission status: ${settings.authorizationStatus}');
       }
-    } catch (e) {
-      print('❌ Error initializing notification service: $e');
+    } catch (e, stackTrace) {
+      AppLogger.e('Error initializing notification service', e, stackTrace);
     }
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
-    print('📬 Notification received: ${message.notification?.title}');
+    AppLogger.i('Notification received: ${message.notification?.title}');
     
     const androidDetails = AndroidNotificationDetails(
       'high_importance_channel',
@@ -200,9 +201,9 @@ class NotificationService {
           ),
         ),
       );
-      print('✅ Large expense notification sent');
-    } catch (e) {
-      print('❌ Error showing large expense alert: $e');
+      AppLogger.i('Large expense notification sent');
+    } catch (e, stackTrace) {
+      AppLogger.e('Error showing large expense alert', e, stackTrace);
     }
   }
 
@@ -297,9 +298,9 @@ class NotificationService {
           ),
         ),
       );
-      print('✅ Expense goal alert sent: $title');
-    } catch (e) {
-      print('❌ Error showing expense goal alert: $e');
+      AppLogger.i('Expense goal alert sent: $title');
+    } catch (e, stackTrace) {
+      AppLogger.e('Error showing expense goal alert', e, stackTrace);
     }
   }
 
@@ -331,9 +332,9 @@ class NotificationService {
           ),
         ),
       );
-      print('✅ Test notification sent');
-    } catch (e) {
-      print('❌ Error showing test notification: $e');
+      AppLogger.i('Test notification sent');
+    } catch (e, stackTrace) {
+      AppLogger.e('Error showing test notification', e, stackTrace);
     }
   }
 }

@@ -3,11 +3,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/monthly_balance.dart';
 import '../models/income_source.dart';
 import '../models/expense.dart';
+import '../utils/logger.dart';
+import '../utils/constants.dart';
+import 'cache_service.dart';
 import 'income_calculator.dart';
 
 class MonthlyBalanceService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final CacheService _cache = CacheService();
 
   // Get current user ID
   String? get currentUserId => _auth.currentUser?.uid;
@@ -62,38 +66,57 @@ class MonthlyBalanceService {
       );
 
       await _firestore
-          .collection('users')
+          .collection(AppConstants.usersCollection)
           .doc(userId)
-          .collection('monthly_balances')
+          .collection(AppConstants.monthlyBalancesCollection)
           .doc(balanceId)
           .set(monthlyBalance.toMap());
-          
-    } catch (e) {
-      print('Error saving monthly balance: $e');
+      
+      // Clear cache for this balance
+      _cache.remove('balance_$balanceId');
+      _cache.clearPattern('balance_${userId}_');
+      
+      AppLogger.i('Monthly balance saved: $balanceId');
+    } catch (e, stackTrace) {
+      AppLogger.e('Error saving monthly balance', e, stackTrace);
       rethrow;
     }
   }
 
-  /// Get monthly balance for a specific month
-  Future<MonthlyBalance?> getMonthlyBalance(int year, int month) async {
+  /// Get monthly balance for a specific month (with caching)
+  Future<MonthlyBalance?> getMonthlyBalance(int year, int month, {bool useCache = true}) async {
     try {
       final userId = currentUserId;
       if (userId == null) return null;
 
       final balanceId = '${year}_${month.toString().padLeft(2, '0')}';
+      final cacheKey = 'balance_${userId}_$balanceId';
+
+      // Try cache first
+      if (useCache) {
+        final cached = _cache.get<MonthlyBalance>(cacheKey);
+        if (cached != null) {
+          return cached;
+        }
+      }
+
+      // Fetch from Firestore (try cache first, then server)
       final doc = await _firestore
-          .collection('users')
+          .collection(AppConstants.usersCollection)
           .doc(userId)
-          .collection('monthly_balances')
+          .collection(AppConstants.monthlyBalancesCollection)
           .doc(balanceId)
-          .get();
+          .get(const GetOptions(source: Source.serverAndCache));
 
       if (doc.exists) {
-        return MonthlyBalance.fromMap(doc.data()!);
+        final balance = MonthlyBalance.fromMap(doc.data()!);
+        // Cache the result
+        _cache.set(cacheKey, balance, ttl: const Duration(minutes: 10));
+        return balance;
       }
       return null;
-    } catch (e) {
-      print('Error getting monthly balance: $e');
+    } catch (e, stackTrace) {
+      AppLogger.e('Error getting monthly balance', e, stackTrace);
       return null;
     }
   }
@@ -102,20 +125,27 @@ class MonthlyBalanceService {
   Stream<List<MonthlyBalance>> getMonthlyBalances() {
     final userId = currentUserId;
     if (userId == null) {
-      return Stream.value([]);
+      return Stream.value(<MonthlyBalance>[]);
     }
 
     return _firestore
-        .collection('users')
+        .collection(AppConstants.usersCollection)
         .doc(userId)
-        .collection('monthly_balances')
+        .collection(AppConstants.monthlyBalancesCollection)
         .orderBy('year')
         .orderBy('month')
         .snapshots()
-        .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => MonthlyBalance.fromMap(doc.data()))
-          .toList();
+        .map<List<MonthlyBalance>>((snapshot) {
+      try {
+        return snapshot.docs
+            .map((doc) => MonthlyBalance.fromMap(doc.data()))
+            .toList();
+      } catch (e, stackTrace) {
+        AppLogger.e('Error parsing monthly balances', e, stackTrace);
+        return <MonthlyBalance>[];
+      }
+    }).handleError((error) {
+      AppLogger.e('Error in monthly balances stream', error);
     });
   }
 
@@ -168,16 +198,17 @@ class MonthlyBalanceService {
       final balanceId = '${year}_${month.toString().padLeft(2, '0')}';
       
       await _firestore
-          .collection('users')
+          .collection(AppConstants.usersCollection)
           .doc(userId)
-          .collection('monthly_balances')
+          .collection(AppConstants.monthlyBalancesCollection)
           .doc(balanceId)
           .update({
         'actualHoursWorked': hoursWorked,
         'updatedAt': DateTime.now().toIso8601String(),
       });
-    } catch (e) {
-      print('Error updating actual hours worked: $e');
+      AppLogger.i('Actual hours worked updated: $balanceId');
+    } catch (e, stackTrace) {
+      AppLogger.e('Error updating actual hours worked', e, stackTrace);
       rethrow;
     }
   }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firebase_service.dart';
 import '../services/notification_service.dart';
+import '../utils/logger.dart';
 import 'home_screen.dart';
 import 'auth_screen.dart';
 
@@ -73,8 +74,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         
         await NotificationService().showGoalReminder(goalsData);
       }
-    } catch (e) {
-      print('Error checking active goals: $e');
+    } catch (e, stackTrace) {
+      AppLogger.w('Error checking active goals in splash screen', e, stackTrace);
+      // Error handled silently in splash screen to not block navigation
     }
   }
 

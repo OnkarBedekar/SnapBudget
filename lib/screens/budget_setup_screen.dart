@@ -65,8 +65,9 @@ class _BudgetSetupScreenState extends State<BudgetSetupScreen> {
           });
         });
       }
-    } catch (e) {
-      print('Error loading existing budget: $e');
+    } catch (e, stackTrace) {
+      // Error loading budget - will proceed with empty form
+      // Logger would be used here if needed, but silently fail for UX
     }
   }
 

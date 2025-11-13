@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'home_screen.dart';
+import '../utils/error_handler.dart';
+import '../utils/validators.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({Key? key}) : super(key: key);
@@ -60,32 +62,11 @@ class _AuthScreenState extends State<AuthScreen> {
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
-        switch (e.code) {
-          case 'weak-password':
-            _errorMessage = 'Password is too weak. Use at least 6 characters.';
-            break;
-          case 'email-already-in-use':
-            _errorMessage = 'This email is already registered. Try logging in.';
-            break;
-          case 'invalid-email':
-            _errorMessage = 'Invalid email address.';
-            break;
-          case 'user-not-found':
-            _errorMessage = 'No account found with this email.';
-            break;
-          case 'wrong-password':
-            _errorMessage = 'Incorrect password.';
-            break;
-          case 'invalid-credential':
-            _errorMessage = 'Invalid credentials. Please check your email and password.';
-            break;
-          default:
-            _errorMessage = 'Authentication failed: ${e.message}';
-        }
+        _errorMessage = ErrorHandler.getErrorMessage(e);
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
       setState(() {
-        _errorMessage = 'An error occurred. Please try again.';
+        _errorMessage = ErrorHandler.getErrorMessage(e);
       });
     } finally {
       setState(() {
@@ -175,12 +156,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                   borderSide: const BorderSide(color: AppColors.gradientStart, width: 2),
                                 ),
                               ),
-                              validator: (value) {
-                                if (!_isLogin && (value == null || value.trim().isEmpty)) {
-                                  return 'Please enter your name';
-                                }
-                                return null;
-                              },
+                              validator: !_isLogin ? Validators.name : null,
                             ),
                             const SizedBox(height: 16),
                           ],
@@ -199,15 +175,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 borderSide: const BorderSide(color: AppColors.gradientStart, width: 2),
                               ),
                             ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Please enter your email';
-                              }
-                              if (!value.contains('@')) {
-                                return 'Please enter a valid email';
-                              }
-                              return null;
-                            },
+                            validator: Validators.email,
                           ),
                           const SizedBox(height: 16),
 
@@ -225,15 +193,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 borderSide: const BorderSide(color: AppColors.gradientStart, width: 2),
                               ),
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your password';
-                              }
-                              if (value.length < 6) {
-                                return 'Password must be at least 6 characters';
-                              }
-                              return null;
-                            },
+                            validator: Validators.password,
                           ),
                           const SizedBox(height: 8),
 

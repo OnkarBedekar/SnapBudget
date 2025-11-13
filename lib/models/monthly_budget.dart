@@ -7,7 +7,7 @@ class MonthlyBudget {
   final Map<String, double> categoryBudgets; // {'food': 400, 'transport': 200}
   final double actualSpent;
   final Map<String, double> categorySpent; // Actual spending per category
-  final double remainingBudget;
+  late final double remainingBudget;
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -24,7 +24,9 @@ class MonthlyBudget {
     required this.isActive,
     required this.createdAt,
     required this.updatedAt,
-  }) : remainingBudget = totalBudget - actualSpent;
+  }) {
+    remainingBudget = totalBudget - actualSpent;
+  }
 
   // Get remaining budget for a specific category
   double getCategoryRemaining(String category) {
@@ -94,6 +96,20 @@ class MonthlyBudget {
   }
 
   factory MonthlyBudget.fromMap(Map<String, dynamic> map) {
+    DateTime createdAt, updatedAt;
+    try {
+      createdAt = map['createdAt'] != null 
+          ? DateTime.parse(map['createdAt']) 
+          : DateTime.now();
+      updatedAt = map['updatedAt'] != null 
+          ? DateTime.parse(map['updatedAt']) 
+          : DateTime.now();
+    } catch (e) {
+      final now = DateTime.now();
+      createdAt = now;
+      updatedAt = now;
+    }
+    
     return MonthlyBudget(
       id: map['id'] ?? '',
       userId: map['userId'] ?? '',
@@ -104,8 +120,8 @@ class MonthlyBudget {
       actualSpent: (map['actualSpent'] ?? 0).toDouble(),
       categorySpent: Map<String, double>.from(map['categorySpent'] ?? {}),
       isActive: map['isActive'] ?? false,
-      createdAt: DateTime.parse(map['createdAt']),
-      updatedAt: DateTime.parse(map['updatedAt']),
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 

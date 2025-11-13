@@ -37,12 +37,12 @@ class IncomeCalculator {
         }
       } else {
         // For past months, only show income if there were actual paydays
-        if (paydaysInMonth > 0) {
+        if (paydaysInMonth > 0 && income.payDates.isNotEmpty) {
           // Calculate based on paydays and target income per period
           // This assumes full target hours were worked for each pay period
           totalIncome += (income.projectedIncome / income.payDates.length) * paydaysInMonth;
         }
-        // If no paydays in that month, income is 0
+        // If no paydays in that month or empty payDates, income is 0
       }
     }
 
@@ -82,7 +82,7 @@ class IncomeCalculator {
         } else {
           // Past months: only include if paydays occurred
           int paydaysInMonth = _countPaydaysInMonth(income.payDates, checkDate.month, checkDate.year);
-          if (paydaysInMonth > 0) {
+          if (paydaysInMonth > 0 && income.payDates.isNotEmpty) {
             // Calculate income for this month based on paydays
             double monthlyIncome = (income.projectedIncome / income.payDates.length) * paydaysInMonth;
             totalSavings += monthlyIncome;
@@ -96,6 +96,8 @@ class IncomeCalculator {
 
   /// Count how many pay dates occurred in a specific month
   static int _countPaydaysInMonth(List<int> payDates, int month, int year) {
+    if (payDates.isEmpty) return 0;
+    
     int count = 0;
     final now = DateTime.now();
     

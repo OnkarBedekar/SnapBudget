@@ -33,15 +33,29 @@ class Expense {
   }
 
   factory Expense.fromMap(Map<String, dynamic> map) {
-    return Expense(
-      id: map['id'] ?? '',
-      userId: map['userId'] ?? '',
-      amount: (map['amount'] ?? 0).toDouble(),
-      category: map['category'] ?? 'Other',
-      description: map['description'],
-      photoUrl: map['photoUrl'],
-      date: DateTime.parse(map['date']),
-      createdAt: DateTime.parse(map['createdAt']),
-    );
+    try {
+      return Expense(
+        id: map['id'] ?? '',
+        userId: map['userId'] ?? '',
+        amount: (map['amount'] ?? 0).toDouble(),
+        category: map['category'] ?? 'Other',
+        description: map['description'],
+        photoUrl: map['photoUrl'],
+        date: map['date'] != null ? DateTime.parse(map['date']) : DateTime.now(),
+        createdAt: map['createdAt'] != null ? DateTime.parse(map['createdAt']) : DateTime.now(),
+      );
+    } catch (e) {
+      // Fallback to current date if parsing fails
+      return Expense(
+        id: map['id'] ?? '',
+        userId: map['userId'] ?? '',
+        amount: (map['amount'] ?? 0).toDouble(),
+        category: map['category'] ?? 'Other',
+        description: map['description'],
+        photoUrl: map['photoUrl'],
+        date: DateTime.now(),
+        createdAt: DateTime.now(),
+      );
+    }
   }
 }

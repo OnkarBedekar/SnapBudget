@@ -55,6 +55,25 @@ class BudgetGoal {
   }
 
   factory BudgetGoal.fromMap(Map<String, dynamic> map) {
+    DateTime startDate, endDate, createdAt;
+    try {
+      final now = DateTime.now();
+      startDate = map['startDate'] != null 
+          ? DateTime.parse(map['startDate']) 
+          : now;
+      endDate = map['endDate'] != null 
+          ? DateTime.parse(map['endDate']) 
+          : now.add(const Duration(days: 30));
+      createdAt = map['createdAt'] != null 
+          ? DateTime.parse(map['createdAt']) 
+          : now;
+    } catch (e) {
+      final now = DateTime.now();
+      startDate = now;
+      endDate = now.add(const Duration(days: 30));
+      createdAt = now;
+    }
+    
     return BudgetGoal(
       id: map['id'] ?? '',
       userId: map['userId'] ?? '',
@@ -62,11 +81,11 @@ class BudgetGoal {
       targetAmount: (map['targetAmount'] ?? 0).toDouble(),
       currentAmount: (map['currentAmount'] ?? 0).toDouble(),
       category: map['category'] ?? 'savings',
-      startDate: DateTime.parse(map['startDate']),
-      endDate: DateTime.parse(map['endDate']),
+      startDate: startDate,
+      endDate: endDate,
       iconName: map['iconName'],
       colorValue: map['colorValue'] ?? 0xFF6C63FF,
-      createdAt: DateTime.parse(map['createdAt']),
+      createdAt: createdAt,
     );
   }
 

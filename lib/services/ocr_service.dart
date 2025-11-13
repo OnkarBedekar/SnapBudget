@@ -1,4 +1,5 @@
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import '../utils/logger.dart';
 
 class OcrService {
   final TextRecognizer _textRecognizer = TextRecognizer();
@@ -21,8 +22,8 @@ class OcrService {
         'date': date,
         'fullText': fullText,
       };
-    } catch (e) {
-      print('OCR Error: $e');
+    } catch (e, stackTrace) {
+      AppLogger.e('OCR Error', e, stackTrace);
       return {
         'amount': null,
         'date': null,
