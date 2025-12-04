@@ -4,6 +4,7 @@ import 'auth_screen.dart';
 import 'home_screen.dart';
 import 'budget_goals_screen.dart';
 import 'notification_settings_screen.dart';
+import '../services/cache_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -123,6 +124,8 @@ class ProfileScreen extends StatelessWidget {
 
             ElevatedButton.icon(
               onPressed: () async {
+                // Clear all cache before signing out
+                CacheService().clear();
                 await FirebaseAuth.instance.signOut();
                 if (context.mounted) {
                   Navigator.of(context).pushAndRemoveUntil(

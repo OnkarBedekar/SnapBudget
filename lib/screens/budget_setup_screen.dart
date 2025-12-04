@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../services/firebase_service.dart';
 import '../services/date_helper.dart';
 import '../screens/home_screen.dart';
 import '../widgets/date_filter_widget.dart';
+import '../providers/dashboard_provider.dart';
+import '../utils/constants.dart';
 
 class BudgetSetupScreen extends StatefulWidget {
   final DateFilter currentFilter;
@@ -23,17 +26,8 @@ class _BudgetSetupScreenState extends State<BudgetSetupScreen> {
   final _categoryControllers = <String, TextEditingController>{};
   
   bool _isLoading = false;
-  final List<String> _categories = [
-    'Food & Dining',
-    'Transportation',
-    'Entertainment',
-    'Shopping',
-    'Bills & Utilities',
-    'Healthcare',
-    'Education',
-    'Travel',
-    'Other',
-  ];
+  // Use the same categories as expenses so budget tracking lines up correctly
+  final List<String> _categories = AppConstants.expenseCategories;
 
   @override
   void initState() {
@@ -436,11 +430,12 @@ class _BudgetSetupScreenState extends State<BudgetSetupScreen> {
     final savings = totalBudget * 0.2; // 20%
 
     // Distribute among categories
-    final needsCategories = ['Bills & Utilities', 'Healthcare', 'Transportation'];
-    final wantsCategories = ['Food & Dining', 'Entertainment', 'Shopping', 'Travel'];
+    // Map to app expense categories so category spending matches
+    final needsCategories = ['Bills', 'Healthcare', 'Transport'];
+    final wantsCategories = ['Food', 'Entertainment', 'Shopping', 'Other'];
     
-    final needsPerCategory = needs / needsCategories.length;
-    final wantsPerCategory = wants / wantsCategories.length;
+    final needsPerCategory = needsCategories.isNotEmpty ? needs / needsCategories.length : 0;
+    final wantsPerCategory = wantsCategories.isNotEmpty ? wants / wantsCategories.length : 0;
 
     for (String category in _categories) {
       if (needsCategories.contains(category)) {
@@ -448,6 +443,7 @@ class _BudgetSetupScreenState extends State<BudgetSetupScreen> {
       } else if (wantsCategories.contains(category)) {
         _categoryControllers[category]!.text = wantsPerCategory.toStringAsFixed(0);
       } else {
+        // Savings is not mapped to a specific category; keep as 0 here
         _categoryControllers[category]!.text = '0';
       }
     }
@@ -467,28 +463,26 @@ class _BudgetSetupScreenState extends State<BudgetSetupScreen> {
     switch (type) {
       case 'conservative':
         allocations = {
-          'Food & Dining': totalBudget * 0.15,
-          'Transportation': totalBudget * 0.20,
-          'Entertainment': totalBudget * 0.10,
-          'Shopping': totalBudget * 0.05,
-          'Bills & Utilities': totalBudget * 0.30,
-          'Healthcare': totalBudget * 0.10,
-          'Education': totalBudget * 0.05,
-          'Travel': totalBudget * 0.03,
-          'Other': totalBudget * 0.02,
+          // Heavier weight on essential categories
+          'Food': totalBudget * 0.18,
+          'Transport': totalBudget * 0.18,
+          'Bills': totalBudget * 0.30,
+          'Healthcare': totalBudget * 0.14,
+          'Shopping': totalBudget * 0.06,
+          'Entertainment': totalBudget * 0.06,
+          'Other': totalBudget * 0.08,
         };
         break;
       case 'balanced':
         allocations = {
-          'Food & Dining': totalBudget * 0.20,
-          'Transportation': totalBudget * 0.15,
-          'Entertainment': totalBudget * 0.15,
-          'Shopping': totalBudget * 0.10,
-          'Bills & Utilities': totalBudget * 0.25,
-          'Healthcare': totalBudget * 0.08,
-          'Education': totalBudget * 0.04,
-          'Travel': totalBudget * 0.03,
-          'Other': totalBudget * 0.00,
+          // More even distribution across all expense categories
+          'Food': totalBudget * 0.20,
+          'Transport': totalBudget * 0.15,
+          'Bills': totalBudget * 0.25,
+          'Healthcare': totalBudget * 0.10,
+          'Shopping': totalBudget * 0.12,
+          'Entertainment': totalBudget * 0.10,
+          'Other': totalBudget * 0.08,
         };
         break;
     }
@@ -530,6 +524,14 @@ class _BudgetSetupScreenState extends State<BudgetSetupScreen> {
         totalBudget: totalBudget,
         categoryBudgets: categoryBudgets,
       );
+
+      // Refresh dashboard provider to show the new budget (force refresh to bypass cache)
+      try {
+        final dashboardProvider = Provider.of<DashboardProvider>(context, listen: false);
+        await dashboardProvider.refresh(forceBudgetRefresh: true);
+      } catch (e) {
+        // Provider might not be available, that's okay
+      }
 
       if (mounted) {
         Navigator.of(context).pop();

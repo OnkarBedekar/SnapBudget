@@ -325,8 +325,12 @@ class _DashboardTabState extends State<DashboardTab> {
       body: SafeArea(
         child: Consumer<DashboardProvider>(
           builder: (context, provider, child) {
-            // Show loading state
-            if (provider.isLoading && provider.incomeSources.isEmpty && provider.expenses.isEmpty) {
+            // Show loading state only if we're actually loading AND have no data yet
+            // For new users with empty data, we should show the dashboard, not skeleton
+            if (provider.isLoading && 
+                provider.incomeSources.isEmpty && 
+                provider.expenses.isEmpty &&
+                !provider.hasError) {
               return _buildSkeletonLoader();
             }
 

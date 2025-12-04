@@ -151,10 +151,8 @@ class DashboardProvider extends ChangeNotifier {
         _expenses = expenses;
         _isLoadingExpenses = false;
         _invalidateComputedValues();
-        // Reload balance data when expenses change (only if we have income sources)
-        if (_incomeSources.isNotEmpty) {
-          _loadBalanceData();
-        }
+        // Reload balance data when expenses change (works even with empty arrays for new users)
+        _loadBalanceData();
         // Reload budget when expenses change
         _loadBudget();
         notifyListeners();
@@ -173,6 +171,8 @@ class DashboardProvider extends ChangeNotifier {
   Future<void> _loadBalanceData() async {
     // Don't reload if we don't have income sources or expenses yet
     // This prevents unnecessary API calls and errors
+    // BUT: For new users with empty data, we still need to load balance
+    // So we only skip if streams are actively loading, not if they're empty
     if (_isLoadingIncome || _isLoadingExpenses) {
       return;
     }
@@ -201,15 +201,17 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   /// Load budget data
-  Future<void> _loadBudget() async {
+  Future<void> _loadBudget({bool forceRefresh = false}) async {
     _isLoadingBudget = true;
     _budgetError = null;
     notifyListeners();
 
     try {
+      // Force refresh by bypassing cache if needed
       final budget = await _firebaseService.getMonthlyBudget(
         _currentFilter.year,
         _currentFilter.month,
+        useCache: !forceRefresh,
       );
       _budget = budget;
       _isLoadingBudget = false;
@@ -240,15 +242,38 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   /// Refresh all data
-  Future<void> refresh() async {
+  Future<void> refresh({bool forceBudgetRefresh = false}) async {
     AppLogger.i('Refreshing dashboard data');
     _invalidateComputedValues();
     _loadIncomeSources();
     _loadExpenses();
     await Future.wait([
       _loadBalanceData(),
-      _loadBudget(),
+      _loadBudget(forceRefresh: forceBudgetRefresh),
     ]);
+  }
+
+  /// Reset all data (used when user signs out/in)
+  void reset() {
+    AppLogger.i('Resetting dashboard provider');
+    _incomeSubscription?.cancel();
+    _expensesSubscription?.cancel();
+    _incomeSources = [];
+    _expenses = [];
+    _balanceData = null;
+    _budget = null;
+    _invalidateComputedValues();
+    _isLoadingIncome = true;
+    _isLoadingExpenses = true;
+    _isLoadingBalance = true;
+    _isLoadingBudget = true;
+    _incomeError = null;
+    _expensesError = null;
+    _balanceError = null;
+    _budgetError = null;
+    notifyListeners();
+    // Re-initialize to load new user's data
+    _initialize();
   }
 
   /// Invalidate computed values to force recalculation

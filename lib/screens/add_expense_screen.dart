@@ -178,10 +178,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         NotificationService().showLargeExpenseAlert(expense.amount);
       }
 
-      // Refresh dashboard provider if available
+      // Refresh dashboard provider to update budget and totals
       try {
         final dashboardProvider = Provider.of<DashboardProvider>(context, listen: false);
-        await dashboardProvider.refresh();
+        await dashboardProvider.refresh(forceBudgetRefresh: true);
       } catch (e) {
         // Provider might not be available in this context, that's okay
       }

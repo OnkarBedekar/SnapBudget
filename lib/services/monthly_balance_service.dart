@@ -72,8 +72,8 @@ class MonthlyBalanceService {
           .doc(balanceId)
           .set(monthlyBalance.toMap());
       
-      // Clear cache for this balance
-      _cache.remove('balance_$balanceId');
+      // Clear cache for this balance (use userId in key to prevent cross-user cache issues)
+      _cache.remove('balance_${userId}_$balanceId');
       _cache.clearPattern('balance_${userId}_');
       
       AppLogger.i('Monthly balance saved: $balanceId');

@@ -52,8 +52,8 @@ class BudgetService {
           .doc(budgetId)
           .set(monthlyBudget.toMap());
       
-      // Clear cache for this budget
-      _cache.remove('budget_$budgetId');
+      // Clear cache for this budget (use userId in key to prevent cross-user cache issues)
+      _cache.remove('budget_${userId}_$budgetId');
       _cache.clearPattern('budget_${userId}_');
       
       AppLogger.i('Monthly budget saved: $budgetId');
@@ -80,13 +80,13 @@ class BudgetService {
         }
       }
 
-      // Fetch from Firestore (try cache first, then server)
+      // Fetch from Firestore (bypass cache if useCache is false)
       final doc = await _firestore
           .collection(AppConstants.usersCollection)
           .doc(userId)
           .collection(AppConstants.monthlyBudgetsCollection)
           .doc(budgetId)
-          .get(const GetOptions(source: Source.serverAndCache));
+          .get(GetOptions(source: useCache ? Source.serverAndCache : Source.server));
 
       if (doc.exists) {
         final budget = MonthlyBudget.fromMap(doc.data()!);
@@ -163,14 +163,16 @@ class BudgetService {
           final categorySpent = Map<String, double>.from(data['categorySpent'] ?? {});
           
           // Update totals
-          final newActualSpent = currentSpent + amount;
-          final newCategorySpent = Map<String, double>.from(categorySpent);
-          newCategorySpent[category] = (newCategorySpent[category] ?? 0) + amount;
-          
+          final updated = applyAddExpenseToBudgetData(
+            data,
+            amount: amount,
+            category: category,
+          );
+
           transaction.update(budgetDoc, {
-            'actualSpent': newActualSpent,
-            'categorySpent': newCategorySpent,
-            'remainingBudget': data['totalBudget'] - newActualSpent,
+            'actualSpent': updated['actualSpent'],
+            'categorySpent': updated['categorySpent'],
+            'remainingBudget': updated['remainingBudget'],
             'updatedAt': DateTime.now().toIso8601String(),
           });
         }
@@ -214,15 +216,16 @@ class BudgetService {
           final categorySpent = Map<String, double>.from(data['categorySpent'] ?? {});
           
           // Subtract from totals
-          final newActualSpent = (currentSpent - amount).clamp(0.0, double.infinity);
-          final newCategorySpent = Map<String, double>.from(categorySpent);
-          final currentCategorySpent = (newCategorySpent[category] ?? 0) - amount;
-          newCategorySpent[category] = currentCategorySpent.clamp(0.0, double.infinity);
-          
+          final updated = applySubtractExpenseFromBudgetData(
+            data,
+            amount: amount,
+            category: category,
+          );
+
           transaction.update(budgetDoc, {
-            'actualSpent': newActualSpent,
-            'categorySpent': newCategorySpent,
-            'remainingBudget': data['totalBudget'] - newActualSpent,
+            'actualSpent': updated['actualSpent'],
+            'categorySpent': updated['categorySpent'],
+            'remainingBudget': updated['remainingBudget'],
             'updatedAt': DateTime.now().toIso8601String(),
           });
         }
@@ -283,36 +286,18 @@ class BudgetService {
           
           if (snapshot.exists) {
             final data = snapshot.data()!;
-            final currentSpent = (data['actualSpent'] ?? 0).toDouble();
-            final categorySpent = Map<String, double>.from(data['categorySpent'] ?? {});
-            
-            // Calculate difference
-            final amountDiff = newAmount - oldAmount;
-            final newActualSpent = (currentSpent + amountDiff).clamp(0.0, double.infinity);
-            
-            // Update category spending
-            final newCategorySpent = Map<String, double>.from(categorySpent);
-            
-            // Subtract from old category
-            if (oldCategory != newCategory) {
-              final oldCategorySpent = (newCategorySpent[oldCategory] ?? 0) - oldAmount;
-              newCategorySpent[oldCategory] = oldCategorySpent.clamp(0.0, double.infinity);
-            }
-            
-            // Add to new category
-            final currentNewCategorySpent = (newCategorySpent[newCategory] ?? 0);
-            if (oldCategory == newCategory) {
-              // Same category, just update the difference
-              newCategorySpent[newCategory] = (currentNewCategorySpent + amountDiff).clamp(0.0, double.infinity);
-            } else {
-              // Different category, add new amount
-              newCategorySpent[newCategory] = (currentNewCategorySpent + newAmount).clamp(0.0, double.infinity);
-            }
-            
+            final updated = applyEditExpenseOnBudgetData(
+              data,
+              oldAmount: oldAmount,
+              oldCategory: oldCategory,
+              newAmount: newAmount,
+              newCategory: newCategory,
+            );
+
             transaction.update(budgetDoc, {
-              'actualSpent': newActualSpent,
-              'categorySpent': newCategorySpent,
-              'remainingBudget': data['totalBudget'] - newActualSpent,
+              'actualSpent': updated['actualSpent'],
+              'categorySpent': updated['categorySpent'],
+              'remainingBudget': updated['remainingBudget'],
               'updatedAt': DateTime.now().toIso8601String(),
             });
           }
@@ -437,5 +422,99 @@ class BudgetService {
           (categorySpent[expense.category] ?? 0) + expense.amount;
     }
     return categorySpent;
+  }
+
+  // ======== Pure helper methods for budget math (testable without Firebase) ========
+
+  /// Apply an added expense to raw budget Firestore data.
+  /// Expects keys: 'actualSpent', 'categorySpent', 'totalBudget'.
+  static Map<String, dynamic> applyAddExpenseToBudgetData(
+    Map<String, dynamic> data, {
+    required double amount,
+    required String category,
+  }) {
+    final currentSpent = (data['actualSpent'] ?? 0).toDouble();
+    final totalBudget = (data['totalBudget'] ?? 0).toDouble();
+    final categorySpent = Map<String, double>.from(data['categorySpent'] ?? {});
+
+    final newActualSpent = currentSpent + amount;
+    final newCategorySpent = Map<String, double>.from(categorySpent);
+    newCategorySpent[category] = (newCategorySpent[category] ?? 0) + amount;
+
+    return {
+      ...data,
+      'actualSpent': newActualSpent,
+      'categorySpent': newCategorySpent,
+      'remainingBudget': totalBudget - newActualSpent,
+    };
+  }
+
+  /// Apply a deleted expense to raw budget Firestore data (subtracting amounts, clamped at 0).
+  static Map<String, dynamic> applySubtractExpenseFromBudgetData(
+    Map<String, dynamic> data, {
+    required double amount,
+    required String category,
+  }) {
+    final currentSpent = (data['actualSpent'] ?? 0).toDouble();
+    final totalBudget = (data['totalBudget'] ?? 0).toDouble();
+    final categorySpent = Map<String, double>.from(data['categorySpent'] ?? {});
+
+    final newActualSpent = (currentSpent - amount).clamp(0.0, double.infinity);
+    final newCategorySpent = Map<String, double>.from(categorySpent);
+    final currentCategorySpent = (newCategorySpent[category] ?? 0) - amount;
+    newCategorySpent[category] = currentCategorySpent.clamp(0.0, double.infinity);
+
+    return {
+      ...data,
+      'actualSpent': newActualSpent,
+      'categorySpent': newCategorySpent,
+      'remainingBudget': totalBudget - newActualSpent,
+    };
+  }
+
+  /// Apply an edited expense (same month) to raw budget Firestore data.
+  /// Handles amount and category changes with clamping.
+  static Map<String, dynamic> applyEditExpenseOnBudgetData(
+    Map<String, dynamic> data, {
+    required double oldAmount,
+    required String oldCategory,
+    required double newAmount,
+    required String newCategory,
+  }) {
+    final currentSpent = (data['actualSpent'] ?? 0).toDouble();
+    final totalBudget = (data['totalBudget'] ?? 0).toDouble();
+    final categorySpent = Map<String, double>.from(data['categorySpent'] ?? {});
+
+    // Calculate difference
+    final amountDiff = newAmount - oldAmount;
+    final newActualSpent = (currentSpent + amountDiff).clamp(0.0, double.infinity);
+
+    // Update category spending
+    final newCategorySpent = Map<String, double>.from(categorySpent);
+
+    // Subtract from old category if it changed
+    if (oldCategory != newCategory) {
+      final oldCategorySpent = (newCategorySpent[oldCategory] ?? 0) - oldAmount;
+      newCategorySpent[oldCategory] = oldCategorySpent.clamp(0.0, double.infinity);
+    }
+
+    // Add to new category
+    final currentNewCategorySpent = (newCategorySpent[newCategory] ?? 0);
+    if (oldCategory == newCategory) {
+      // Same category, just update the difference
+      newCategorySpent[newCategory] =
+          (currentNewCategorySpent + amountDiff).clamp(0.0, double.infinity);
+    } else {
+      // Different category, add new amount
+      newCategorySpent[newCategory] =
+          (currentNewCategorySpent + newAmount).clamp(0.0, double.infinity);
+    }
+
+    return {
+      ...data,
+      'actualSpent': newActualSpent,
+      'categorySpent': newCategorySpent,
+      'remainingBudget': totalBudget - newActualSpent,
+    };
   }
 }

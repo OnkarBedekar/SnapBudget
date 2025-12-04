@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/income_source.dart';
 import '../services/firebase_service.dart';
 import '../services/date_helper.dart';
 import 'home_screen.dart';
+import '../providers/dashboard_provider.dart';
 
 class IncomeTrackerScreen extends StatefulWidget {
   const IncomeTrackerScreen({Key? key}) : super(key: key);
@@ -740,12 +742,38 @@ class _IncomeTrackerScreenState extends State<IncomeTrackerScreen> {
           ),
           TextButton(
             onPressed: () async {
-              await _firebaseService.deleteIncomeSource(income.id);
-              if (context.mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Income source deleted')),
-                );
+              try {
+                await _firebaseService.deleteIncomeSource(income.id);
+                
+                // Refresh dashboard provider if available
+                if (context.mounted) {
+                  try {
+                    final dashboardProvider = Provider.of<DashboardProvider>(context, listen: false);
+                    await dashboardProvider.refresh();
+                  } catch (e) {
+                    // Provider might not be available, that's okay
+                  }
+                }
+                
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Income source deleted'),
+                      backgroundColor: AppColors.income,
+                    ),
+                  );
+                }
+              } catch (e, stackTrace) {
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error deleting income source: ${e.toString()}'),
+                      backgroundColor: AppColors.expense,
+                    ),
+                  );
+                }
               }
             },
             child: const Text('Delete', style: TextStyle(color: AppColors.expense)),

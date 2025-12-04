@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import 'home_screen.dart';
 import '../utils/error_handler.dart';
 import '../utils/validators.dart';
+import '../services/cache_service.dart';
+import '../providers/dashboard_provider.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({Key? key}) : super(key: key);
@@ -53,6 +56,17 @@ class _AuthScreenState extends State<AuthScreen> {
           password: _passwordController.text,
         );
         await auth.currentUser?.updateDisplayName(_nameController.text.trim());
+      }
+
+      // Clear all cache when signing in/up to prevent seeing old user's data
+      CacheService().clear();
+      
+      // Reset dashboard provider to clear any stale data
+      try {
+        final dashboardProvider = Provider.of<DashboardProvider>(context, listen: false);
+        dashboardProvider.reset();
+      } catch (e) {
+        // Provider might not be available yet, that's okay
       }
 
       if (mounted) {

@@ -254,11 +254,11 @@ class _SwipeableExpenseTileState extends State<SwipeableExpenseTile> {
                   // Update the expense using the new update method
                   await FirebaseService().updateExpense(updatedExpense, oldExpense: widget.expense);
 
-                  // Refresh dashboard provider if available
+                  // Refresh dashboard provider to update budget and totals
                   if (context.mounted) {
                     try {
                       final dashboardProvider = Provider.of<DashboardProvider>(context, listen: false);
-                      await dashboardProvider.refresh();
+                      await dashboardProvider.refresh(forceBudgetRefresh: true);
                     } catch (e) {
                       // Provider might not be available, that's okay
                     }
@@ -310,11 +310,11 @@ class _SwipeableExpenseTileState extends State<SwipeableExpenseTile> {
               try {
                 await FirebaseService().deleteExpense(widget.expense.id);
                 
-                // Refresh dashboard provider if available
+                // Refresh dashboard provider to update budget and totals
                 if (context.mounted) {
                   try {
                     final dashboardProvider = Provider.of<DashboardProvider>(context, listen: false);
-                    await dashboardProvider.refresh();
+                    await dashboardProvider.refresh(forceBudgetRefresh: true);
                   } catch (e) {
                     // Provider might not be available, that's okay
                   }
@@ -330,6 +330,7 @@ class _SwipeableExpenseTileState extends State<SwipeableExpenseTile> {
                 }
               } catch (e, stackTrace) {
                 if (context.mounted) {
+                  Navigator.pop(context);
                   ErrorHandler.handleError(context, e, stackTrace: stackTrace);
                 }
               }

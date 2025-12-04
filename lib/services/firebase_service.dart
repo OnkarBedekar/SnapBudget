@@ -815,8 +815,8 @@ class FirebaseService {
     );
   }
 
-  Future<MonthlyBudget?> getMonthlyBudget(int year, int month) async {
-    return await budgetService.getMonthlyBudget(year, month);
+  Future<MonthlyBudget?> getMonthlyBudget(int year, int month, {bool useCache = true}) async {
+    return await budgetService.getMonthlyBudget(year, month, useCache: useCache);
   }
 
   Future<MonthlyBudget?> getCurrentMonthBudget() async {

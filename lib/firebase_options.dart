@@ -63,6 +63,6 @@ class DefaultFirebaseOptions {
     messagingSenderId: '314826677849',
     projectId: 'snapbudget-23f37',
     storageBucket: 'snapbudget-23f37.firebasestorage.app',
-    iosBundleId: 'com.example.snapBudget',
+    iosBundleId: 'com.onkar.snapBudget',
   );
 }

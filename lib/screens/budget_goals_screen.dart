@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/budget_goal.dart';
 import '../services/firebase_service.dart';
 import '../services/date_helper.dart';
 import 'home_screen.dart';
+import '../providers/dashboard_provider.dart';
 
 class BudgetGoalsScreen extends StatefulWidget {
   const BudgetGoalsScreen({Key? key}) : super(key: key);
@@ -643,12 +645,38 @@ class _BudgetGoalsScreenState extends State<BudgetGoalsScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              await _firebaseService.deleteBudgetGoal(goal.id);
-              if (context.mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Goal deleted')),
-                );
+              try {
+                await _firebaseService.deleteBudgetGoal(goal.id);
+                
+                // Refresh dashboard provider if available (goals might affect dashboard)
+                if (context.mounted) {
+                  try {
+                    final dashboardProvider = Provider.of<DashboardProvider>(context, listen: false);
+                    await dashboardProvider.refresh();
+                  } catch (e) {
+                    // Provider might not be available, that's okay
+                  }
+                }
+                
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Goal deleted'),
+                      backgroundColor: AppColors.income,
+                    ),
+                  );
+                }
+              } catch (e, stackTrace) {
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error deleting goal: ${e.toString()}'),
+                      backgroundColor: AppColors.expense,
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(foregroundColor: Colors.white,backgroundColor: AppColors.expense),
